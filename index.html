@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Echoes in Transit — Sydney Trains</title>
+
+  <!-- p5.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="ui">
+    <h1>ECHOES IN TRANSIT</h1>
+    <h2>SYDNEY TRAINS</h2>
+
+    <input id="nameInput" placeholder="Your name (optional)">
+    <select id="startDropdown"></select>
+    <select id="endDropdown"></select>
+    <textarea id="msgInput" placeholder="Your unsent message..."></textarea>
+    <button id="sendBtn">SEND EMOTION</button>
+  </div>
+
+  <script src="sketch.js"></script>
+</body>
+</html>
