@@ -1,192 +1,146 @@
+// === Echoes in Transit (Sydney Edition) ===
+// Interactive emotional map over Sydney train routes
+// by bam-bina x GPT-5
+
 let trainGeo;
-let routes = [];
-let ding;
-let db;
+let messages = [];
+let stationInputStart, stationInputEnd, nameInput, messageInput, sendButton;
+let font;
+let firestore;
 
-let startDropdown, endDropdown, msgInput, sendBtn, nameInput;
+// Approximate bounds of Sydney area (for mapping coords)
+let lonMin = 150.6;
+let lonMax = 151.4;
+let latMin = -34.1;
+let latMax = -33.7;
 
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyCYqTDbVZB9my0u1p6wgH4jUmhH3-8tGu8",
-  authDomain: "echoes-in-transit.firebaseapp.com",
-  projectId: "echoes-in-transit",
-  storageBucket: "echoes-in-transit.firebasestorage.app",
-  messagingSenderId: "418859552197",
-  appId: "1:418859552197:web:b5bd359c40bff8ddbccfac"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// 🧩 Preload GeoJSON
 function preload() {
-  trainGeo = loadJSON("sydney_train_routes.geojson");
-  ding = new p5.Oscillator('sine');
-  ding.amp(0.04);
-  ding.freq(900);
+  trainGeo = loadJSON('sydney_train_routes.json', onGeoLoaded, onGeoError);
 }
 
+// ✅ Successful load
+function onGeoLoaded(data) {
+  console.log('✅ GeoJSON loaded successfully');
+  trainGeo = data;
+}
+
+// ❌ Load error
+function onGeoError(err) {
+  console.error('❌ Failed to load GeoJSON:', err);
+}
+
+// 🎬 Setup
 function setup() {
   createCanvas(windowWidth, windowHeight);
+  textFont('Press Start 2P');
+  textAlign(CENTER);
+  noLoop();
+
+  // UI
+  createUI();
+
+  // Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyBva3BFLhJhytiHAcIjgIYF6aSepG-a6v8",
+  authDomain: "echoes-in-transit-v2.firebaseapp.com",
+  projectId: "echoes-in-transit-v2",
+  storageBucket: "echoes-in-transit-v2.firebasestorage.app",
+  messagingSenderId: "252548572349",
+  appId: "1:252548572349:web:2f172fbd17a3b6931c43d4"
+};
 
   firebase.initializeApp(firebaseConfig);
-  db = firebase.firestore();
+  firestore = firebase.firestore();
 
-  nameInput = select("#nameInput");
-  startDropdown = select("#startDropdown");
-  endDropdown = select("#endDropdown");
-  msgInput = select("#msgInput");
-  sendBtn = select("#sendBtn");
-  sendBtn.mousePressed(sendMessage);
-
-  populateStations();
-
-  db.collection("messages").orderBy("timestamp").onSnapshot(snapshot => {
-    routes = [];
-    snapshot.docs.forEach(doc => {
-      let d = doc.data();
-      routes.push({
-        coords: d.coords,
-        msg: d.msg,
-        sender: d.sender,
-        t: random(1)
-      });
+  // Listen to updates
+  firestore.collection("messages").onSnapshot((snapshot) => {
+    messages = [];
+    snapshot.forEach((doc) => {
+      messages.push(doc.data());
     });
+    redraw();
   });
 }
 
-function draw() {
-  background(10, 10, 20);
-  drawTrainLines();
-  drawMessages();
+// 📦 Create UI
+function createUI() {
+  const uiDiv = createDiv('').id('ui').style('position', 'absolute').style('top', '20px').style('left', '20px');
+
+  nameInput = createInput('').attribute('placeholder', 'your name').parent(uiDiv);
+  nameInput.style('display', 'block').style('margin-bottom', '8px');
+
+  stationInputStart = createInput('').attribute('placeholder', 'start station').parent(uiDiv);
+  stationInputStart.style('display', 'block').style('margin-bottom', '8px');
+
+  stationInputEnd = createInput('').attribute('placeholder', 'end station').parent(uiDiv);
+  stationInputEnd.style('display', 'block').style('margin-bottom', '8px');
+
+  messageInput = createInput('').attribute('placeholder', 'unsent message...').parent(uiDiv);
+  messageInput.style('display', 'block').style('margin-bottom', '8px').style('width', '240px');
+
+  sendButton = createButton('SEND EMOTION').parent(uiDiv);
+  sendButton.mousePressed(sendMessage);
 }
 
-function drawTrainLines() {
-  noFill();
-  stroke(255, 80, 160, 100);
-  strokeWeight(1.5);
-
-  for (let f of trainGeo.features) {
-    if (!f.geometry) continue;
-    let geom = f.geometry;
-    if (geom.type === "LineString") {
-      drawRoute(geom.coordinates);
-    } else if (geom.type === "MultiLineString") {
-      geom.coordinates.forEach(coords => drawRoute(coords));
-    }
-  }
-}
-
-function drawRoute(coords) {
-  beginShape();
-  for (let pt of coords) {
-    let v = project(pt[0], pt[1]);
-    vertex(v.x, v.y);
-  }
-  endShape();
-}
-
-function project(lon, lat) {
-  let lonMin = 150.5, lonMax = 151.3;
-  let latMin = -34.1, latMax = -33.7;
-  let x = map(lon, lonMin, lonMax, 100, width - 100);
-  let y = map(lat, latMin, latMax, height - 100, 100);
-  return createVector(x, y);
-}
-
-function populateStations() {
-  let seen = new Set();
-  for (let f of trainGeo.features) {
-    let geom = f.geometry;
-    let coordsArr = (geom.type === "MultiLineString") ? geom.coordinates.flat() : geom.coordinates;
-    coordsArr.forEach(pt => {
-      let key = `${pt[0].toFixed(3)},${pt[1].toFixed(3)}`;
-      if (!seen.has(key)) {
-        startDropdown.option(key);
-        endDropdown.option(key);
-        seen.add(key);
-      }
-    });
-  }
-}
-
-function drawMessages() {
-  noStroke();
-  fill("#a0f0f0");
-
-  for (let r of routes) {
-    let coords = r.coords;
-    if (!coords || coords.length < 2) continue;
-
-    let idx = r.t * (coords.length - 1);
-    let i = floor(idx), f = idx - i;
-    if (i >= coords.length - 1) i = coords.length - 2;
-
-    let p1 = project(coords[i][0], coords[i][1]);
-    let p2 = project(coords[i + 1][0], coords[i + 1][1]);
-    let x = lerp(p1.x, p2.x, f);
-    let y = lerp(p1.y, p2.y, f);
-
-    ellipse(x, y, 8, 8);
-    r.t += 0.002;
-    if (r.t > 1) r.t = 0;
-
-    if (dist(mouseX, mouseY, x, y) < 10) {
-      fill(255);
-      textAlign(CENTER);
-      textSize(14);
-      text(`${r.sender || "Anonymous"}: ${r.msg}`, x, y - 16);
-    }
-  }
-}
-
+// 💬 Send message
 function sendMessage() {
-  let start = startDropdown.value();
-  let end = endDropdown.value();
-  let msg = msgInput.value().trim().slice(0, 240);
-  let sender = nameInput.value().trim().slice(0, 50);
+  const name = nameInput.value();
+  const start = stationInputStart.value();
+  const end = stationInputEnd.value();
+  const text = messageInput.value();
 
-  if (!start || !end || start === end || !msg) return;
-
-  let startCoords = start.split(",").map(Number);
-  let endCoords = end.split(",").map(Number);
-
-  let path = findNearestLine(startCoords, endCoords);
-  if (!path) return;
-
-  let messageData = {
-    coords: path,
-    msg: msg,
-    sender: sender || "Anonymous",
-    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-    t: 0
-  };
-
-  db.collection("messages").add(messageData);
-  ding.start();
-  ding.stop(0.2);
-
-  msgInput.value("");
-  nameInput.value("");
+  if (name && start && end && text) {
+    firestore.collection("messages").add({
+      name: name,
+      start: start,
+      end: end,
+      text: text,
+      timestamp: Date.now()
+    });
+    messageInput.value('');
+  }
 }
 
-function findNearestLine(start, end) {
-  let best = null;
-  let bestDist = 999999;
+// 🗺️ Draw
+function draw() {
+  background(10);
 
-  for (let f of trainGeo.features) {
-    let geom = f.geometry;
-    let allCoords = (geom.type === "MultiLineString") ? geom.coordinates.flat() : geom.coordinates;
-    let s = allCoords[0];
-    let e = allCoords[allCoords.length - 1];
-    let d = dist(start[0], start[1], s[0], s[1]) + dist(end[0], end[1], e[0], e[1]);
-    if (d < bestDist) {
-      bestDist = d;
-      best = allCoords;
+  // Draw Sydney outline (rough grid)
+  stroke(40);
+  for (let x = 100; x < width - 100; x += 50) line(x, 100, x, height - 100);
+  for (let y = 100; y < height - 100; y += 50) line(100, y, width - 100, y);
+
+  // Draw train routes
+  if (trainGeo && trainGeo.features) {
+    stroke(255, 255, 255, 80);
+    strokeWeight(1.5);
+    noFill();
+
+    for (let f of trainGeo.features) {
+      beginShape();
+      for (let coord of f.geometry.coordinates) {
+        let [lon, lat] = coord;
+        let x = map(lon, lonMin, lonMax, 100, width - 100);
+        let y = map(lat, latMin, latMax, height - 100, 100);
+        vertex(x, y);
+      }
+      endShape();
     }
   }
-  return best;
+
+  // Draw messages
+  for (let m of messages) {
+    const x = random(100, width - 100);
+    const y = random(100, height - 100);
+    fill(255);
+    noStroke();
+    textSize(8);
+    text(`${m.name}: ${m.text}`, x, y);
+  }
+
+  // Title
+  textSize(14);
+  fill(255);
+  text("ECHOES IN TRANSIT — SYDNEY TRAINS", width / 2, 40);
 }
